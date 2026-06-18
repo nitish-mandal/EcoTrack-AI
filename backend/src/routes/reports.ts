@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import CarbonRecord from '../models/CarbonRecord';
+import { prisma } from '../config/database';
 import { protect, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -7,6 +7,9 @@ router.use(protect);
 
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+
     const { period = 'monthly' } = req.query;
     const now = new Date();
     let startDate: Date;
@@ -14,7 +17,14 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     else if (period === 'annual') startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
     else startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const records = await CarbonRecord.find({ userId: req.user?.id, createdAt: { $gte: startDate } }).sort({ createdAt: 1 });
+    const records = await prisma.carbonRecord.findMany({
+      where: {
+        userId,
+        createdAt: { gte: startDate },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
     const totalCO2 = records.reduce((sum, r) => sum + r.dailyCO2, 0);
     const avgDaily = totalCO2 / (records.length || 1);
 

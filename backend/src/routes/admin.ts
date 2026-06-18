@@ -1,9 +1,6 @@
 import { Router, Response } from 'express';
-import User from '../models/User';
-import CarbonRecord from '../models/CarbonRecord';
-import Challenge from '../models/Challenge';
-import LearningContent from '../models/LearningContent';
-import { protect, adminOnly, AuthRequest } from '../middleware/auth';
+import { prisma } from '../config/database';
+import { protect, adminOnly } from '../middleware/auth';
 
 const router = Router();
 router.use(protect, adminOnly);
@@ -11,7 +8,9 @@ router.use(protect, adminOnly);
 // User management
 router.get('/users', async (_req, res: Response) => {
   try {
-    const users = await User.find().sort({ createdAt: -1 });
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
     res.json({ success: true, data: users });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch users', error });
@@ -20,7 +19,9 @@ router.get('/users', async (_req, res: Response) => {
 
 router.delete('/users/:id', async (req, res: Response) => {
   try {
-    await User.findByIdAndDelete(req.params.id);
+    await prisma.user.delete({
+      where: { id: req.params.id },
+    });
     res.json({ success: true, message: 'User deleted' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to delete user', error });
@@ -29,7 +30,10 @@ router.delete('/users/:id', async (req, res: Response) => {
 
 router.patch('/users/:id/role', async (req, res: Response) => {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, { role: req.body.role }, { new: true });
+    const user = await prisma.user.update({
+      where: { id: req.params.id },
+      data: { role: req.body.role },
+    });
     res.json({ success: true, data: user });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to update role', error });
@@ -39,16 +43,34 @@ router.patch('/users/:id/role', async (req, res: Response) => {
 // Analytics
 router.get('/analytics', async (_req, res: Response) => {
   try {
-    const totalUsers = await User.countDocuments();
-    const totalRecords = await CarbonRecord.countDocuments();
-    const totalChallenges = await Challenge.countDocuments();
-    const recentUsers = await User.find().sort({ createdAt: -1 }).limit(5).select('name email createdAt');
-    const totalCO2 = await CarbonRecord.aggregate([{ $group: { _id: null, total: { $sum: '$dailyCO2' } } }]);
+    const totalUsers = await prisma.user.count();
+    const totalRecords = await prisma.carbonRecord.count();
+    const totalChallenges = await prisma.challenge.count();
+
+    const recentUsers = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        createdAt: true,
+      },
+    });
+
+    const totalCO2Aggregate = await prisma.carbonRecord.aggregate({
+      _sum: {
+        dailyCO2: true,
+      },
+    });
+
     res.json({
       success: true,
       data: {
-        totalUsers, totalRecords, totalChallenges,
-        totalCO2Tracked: totalCO2[0]?.total || 0,
+        totalUsers,
+        totalRecords,
+        totalChallenges,
+        totalCO2Tracked: totalCO2Aggregate._sum.dailyCO2 || 0,
         recentUsers,
       },
     });
@@ -60,8 +82,24 @@ router.get('/analytics', async (_req, res: Response) => {
 // Content management
 router.post('/content', async (req, res: Response) => {
   try {
-    const content = await LearningContent.create(req.body);
-    res.status(201).json({ success: true, data: content });
+    const { title, topic, type, content, imageUrl, videoUrl, readTime, difficulty, quiz, ecoPointsReward, published } = req.body;
+    
+    const learningContent = await prisma.learningContent.create({
+      data: {
+        title,
+        topic,
+        type,
+        content,
+        imageUrl,
+        videoUrl,
+        readTime: readTime ? Number(readTime) : undefined,
+        difficulty: difficulty || 'beginner',
+        quiz: quiz || [],
+        ecoPointsReward: ecoPointsReward ? Number(ecoPointsReward) : undefined,
+        published: published !== undefined ? published : true,
+      },
+    });
+    res.status(201).json({ success: true, data: learningContent });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to create content', error });
   }
@@ -69,8 +107,25 @@ router.post('/content', async (req, res: Response) => {
 
 router.put('/content/:id', async (req, res: Response) => {
   try {
-    const content = await LearningContent.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    res.json({ success: true, data: content });
+    const { title, topic, type, content, imageUrl, videoUrl, readTime, difficulty, quiz, ecoPointsReward, published } = req.body;
+    
+    const learningContent = await prisma.learningContent.update({
+      where: { id: req.params.id },
+      data: {
+        title,
+        topic,
+        type,
+        content,
+        imageUrl,
+        videoUrl,
+        readTime: readTime !== undefined ? (readTime ? Number(readTime) : null) : undefined,
+        difficulty,
+        quiz,
+        ecoPointsReward: ecoPointsReward !== undefined ? Number(ecoPointsReward) : undefined,
+        published,
+      },
+    });
+    res.json({ success: true, data: learningContent });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to update content', error });
   }

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import OpenAI from 'openai';
-import ChatHistory from '../models/ChatHistory';
+import { prisma } from '../config/database';
 import { AuthRequest } from '../middleware/auth';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'dummy-openai-key' });
@@ -15,17 +15,21 @@ export const chat = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { message, sessionId } = req.body;
     const userId = req.user?.id;
+    if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
 
-    let session = sessionId ? await ChatHistory.findById(sessionId) : null;
+    let session = sessionId ? await prisma.chatHistory.findUnique({ where: { id: sessionId } }) : null;
     if (!session) {
-      session = await ChatHistory.create({ userId, messages: [], sessionTitle: message.slice(0, 50) });
+      session = await prisma.chatHistory.create({
+        data: { userId, messages: [], sessionTitle: message.slice(0, 50) },
+      });
     }
 
-    session.messages.push({ role: 'user', content: message, createdAt: new Date() });
+    const currentMessages = (session.messages as any[]) || [];
+    const updatedMessages = [...currentMessages, { role: 'user', content: message, createdAt: new Date() }];
 
     const messages = [
       { role: 'system' as const, content: SYSTEM_PROMPT },
-      ...session.messages.slice(-10).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      ...updatedMessages.slice(-10).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
     ];
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -43,10 +47,14 @@ export const chat = async (req: AuthRequest, res: Response): Promise<void> => {
       }
     });
 
+    const activeSession = session;
     stream.on('finalMessage', async () => {
-      session!.messages.push({ role: 'assistant', content: fullResponse, createdAt: new Date() });
-      await session!.save();
-      res.write(`data: ${JSON.stringify({ done: true, sessionId: session!._id })}\n\n`);
+      const finalMessages = [...updatedMessages, { role: 'assistant', content: fullResponse, createdAt: new Date() }];
+      await prisma.chatHistory.update({
+        where: { id: activeSession.id },
+        data: { messages: finalMessages },
+      });
+      res.write(`data: ${JSON.stringify({ done: true, sessionId: activeSession.id })}\n\n`);
       res.end();
     });
 
@@ -78,7 +86,14 @@ export const getDailyTip = async (_req: Request, res: Response): Promise<void> =
 
 export const getChatHistory = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const sessions = await ChatHistory.find({ userId: req.user?.id }).sort({ createdAt: -1 }).limit(10);
+    const userId = req.user?.id;
+    if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+
+    const sessions = await prisma.chatHistory.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
     res.json({ success: true, data: sessions });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to get history', error });

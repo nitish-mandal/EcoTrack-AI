@@ -1,6 +1,5 @@
-import { Request, Response } from 'express';
-import CarbonRecord from '../models/CarbonRecord';
-import User from '../models/User';
+import { Response } from 'express';
+import { prisma } from '../config/database';
 import { AuthRequest } from '../middleware/auth';
 
 // CO2 emission factors (kg CO2 per unit)
@@ -65,14 +64,30 @@ export const calculate = async (req: AuthRequest, res: Response): Promise<void> 
     const monthlyCO2 = dailyCO2 * 30;
     const annualCO2 = dailyCO2 * 365;
 
-    const record = await CarbonRecord.create({
-      userId: req.user?.id,
-      transportation, energy, food, waste, shopping, water,
-      dailyCO2, weeklyCO2, monthlyCO2, annualCO2,
+    if (!req.user?.id) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+
+    const record = await prisma.carbonRecord.create({
+      data: {
+        userId: req.user.id,
+        transportation: transportation || {},
+        energy: energy || {},
+        food: food || {},
+        waste: waste || {},
+        shopping: shopping || {},
+        water: water || {},
+        dailyCO2,
+        weeklyCO2,
+        monthlyCO2,
+        annualCO2,
+      },
     });
 
-    await User.findByIdAndUpdate(req.user?.id, {
-      $inc: { totalCarbonFootprint: dailyCO2, ecoPoints: 10 },
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        totalCarbonFootprint: { increment: dailyCO2 },
+        ecoPoints: { increment: 10 },
+      },
     });
 
     res.status(201).json({
@@ -91,11 +106,19 @@ export const calculate = async (req: AuthRequest, res: Response): Promise<void> 
 export const getHistory = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { page = 1, limit = 10 } = req.query;
-    const records = await CarbonRecord.find({ userId: req.user?.id })
-      .sort({ createdAt: -1 })
-      .limit(Number(limit))
-      .skip((Number(page) - 1) * Number(limit));
-    const total = await CarbonRecord.countDocuments({ userId: req.user?.id });
+    if (!req.user?.id) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+
+    const records = await prisma.carbonRecord.findMany({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+      take: Number(limit),
+      skip: (Number(page) - 1) * Number(limit),
+    });
+
+    const total = await prisma.carbonRecord.count({
+      where: { userId: req.user.id },
+    });
+
     res.json({ success: true, data: records, pagination: { page: Number(page), limit: Number(limit), total } });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch history', error });
@@ -105,22 +128,38 @@ export const getHistory = async (req: AuthRequest, res: Response): Promise<void>
 export const getSummary = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?.id;
+    if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const records = await CarbonRecord.find({ userId, createdAt: { $gte: thirtyDaysAgo } }).sort({ createdAt: 1 });
+    const records = await prisma.carbonRecord.findMany({
+      where: {
+        userId,
+        createdAt: { gte: thirtyDaysAgo },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
 
     const dailyTrend = records.map(r => ({ date: r.date, value: r.dailyCO2 }));
     const totalMonthly = records.reduce((sum, r) => sum + r.monthlyCO2, 0);
 
     // Category breakdown from latest record
     const latest = records[records.length - 1];
-    const breakdown = latest ? {
-      transportation: (latest.transportation.car + latest.transportation.bus + latest.transportation.train + latest.transportation.flight) * 0.21,
-      energy: latest.energy.electricity + latest.energy.ac,
-      food: latest.food.meat + latest.food.mixed,
-      waste: latest.waste.plastic + latest.waste.organic,
-    } : {};
+    let breakdown = {};
+    if (latest) {
+      const trans = latest.transportation as any;
+      const energy = latest.energy as any;
+      const food = latest.food as any;
+      const waste = latest.waste as any;
+
+      breakdown = {
+        transportation: ((trans?.car || 0) + (trans?.bus || 0) + (trans?.train || 0) + (trans?.flight || 0)) * EMISSION_FACTORS.car,
+        energy: (energy?.electricity || 0) + (energy?.ac || 0),
+        food: (food?.meat || 0) + (food?.mixed || 0),
+        waste: (waste?.plastic || 0) + (waste?.organic || 0),
+      };
+    }
 
     res.json({ success: true, data: { dailyTrend, totalMonthly, breakdown, recordCount: records.length } });
   } catch (error) {

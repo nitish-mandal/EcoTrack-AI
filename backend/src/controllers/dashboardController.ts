@@ -1,38 +1,58 @@
 import { Response } from 'express';
-import User from '../models/User';
-import CarbonRecord from '../models/CarbonRecord';
-import Goal from '../models/Goal';
-import Challenge from '../models/Challenge';
-import TreePlantation from '../models/TreePlantation';
+import { prisma } from '../config/database';
 import { AuthRequest } from '../middleware/auth';
 
 export const getDashboard = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?.id;
-    const user = await User.findById(userId);
+    if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     // Carbon records for charts
-    const monthlyRecords = await CarbonRecord.find({ userId, createdAt: { $gte: thirtyDaysAgo } }).sort({ createdAt: 1 });
-    const weeklyRecords = await CarbonRecord.find({ userId, createdAt: { $gte: sevenDaysAgo } }).sort({ createdAt: 1 });
+    const monthlyRecords = await prisma.carbonRecord.findMany({
+      where: { userId, createdAt: { gte: thirtyDaysAgo } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const weeklyRecords = await prisma.carbonRecord.findMany({
+      where: { userId, createdAt: { gte: sevenDaysAgo } },
+      orderBy: { createdAt: 'asc' },
+    });
 
     // Goals
-    const activeGoals = await Goal.find({ userId, status: 'active' });
-    const completedGoals = await Goal.countDocuments({ userId, status: 'completed' });
+    const activeGoals = await prisma.goal.findMany({
+      where: { userId, status: 'active' },
+    });
+
+    const completedGoals = await prisma.goal.count({
+      where: { userId, status: 'completed' },
+    });
 
     // Challenges
-    const activeChallenges = await Challenge.find({ participants: userId, status: 'active' });
+    const activeChallenges = await prisma.challenge.findMany({
+      where: {
+        participants: { has: userId },
+        status: 'active',
+      },
+    });
 
     // Trees
-    const trees = await TreePlantation.find({ userId });
+    const trees = await prisma.treePlantation.findMany({
+      where: { userId },
+    });
     const totalTrees = trees.reduce((sum, t) => sum + t.count, 0);
     const totalCO2Absorbed = trees.reduce((sum, t) => sum + t.totalCo2Absorbed, 0);
 
-    // Leaderboard rank placeholder
-    const allUsers = await User.find().sort({ ecoPoints: -1 }).select('_id');
-    const rank = allUsers.findIndex(u => u._id.toString() === userId) + 1;
+    // Leaderboard rank
+    const allUsers = await prisma.user.findMany({
+      orderBy: { ecoPoints: 'desc' },
+      select: { id: true },
+    });
+    const rank = allUsers.findIndex(u => u.id === userId) + 1;
 
     // Carbon trend for line chart
     const carbonTrend = monthlyRecords.map(r => ({
@@ -49,13 +69,22 @@ export const getDashboard = async (req: AuthRequest, res: Response): Promise<voi
 
     // Activity breakdown for pie chart
     const latestRecord = monthlyRecords[monthlyRecords.length - 1];
-    const activityBreakdown = latestRecord ? {
-      transportation: (latestRecord.transportation.car * 0.21 + latestRecord.transportation.flight * 0.255 + latestRecord.transportation.bus * 0.089),
-      energy: (latestRecord.energy.electricity * 0.82 + latestRecord.energy.ac * 1.5),
-      food: (latestRecord.food.meat * 7.2 + latestRecord.food.mixed * 5.0),
-      waste: (latestRecord.waste.plastic * 6.0),
-      shopping: (latestRecord.shopping.clothing * 15.0 + latestRecord.shopping.electronics * 70.0),
-    } : { transportation: 35, energy: 25, food: 20, waste: 10, shopping: 10 };
+    let activityBreakdown = { transportation: 35, energy: 25, food: 20, waste: 10, shopping: 10 };
+    if (latestRecord) {
+      const trans = latestRecord.transportation as any;
+      const energy = latestRecord.energy as any;
+      const food = latestRecord.food as any;
+      const waste = latestRecord.waste as any;
+      const shopping = latestRecord.shopping as any;
+
+      activityBreakdown = {
+        transportation: ((trans?.car || 0) * 0.21 + (trans?.flight || 0) * 0.255 + (trans?.bus || 0) * 0.089),
+        energy: ((energy?.electricity || 0) * 0.82 + (energy?.ac || 0) * 1.5),
+        food: ((food?.meat || 0) * 7.2 + (food?.mixed || 0) * 5.0),
+        waste: ((waste?.plastic || 0) * 6.0),
+        shopping: ((shopping?.clothing || 0) * 15.0 + (shopping?.electronics || 0) * 70.0),
+      };
+    }
 
     res.json({
       success: true,

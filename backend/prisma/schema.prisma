@@ -1,0 +1,180 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                    String            @id @default(uuid())
+  name                  String
+  email                 String            @unique
+  password              String?
+  avatar                String?           @default("")
+  role                  String            @default("user") // "user" | "admin"
+  googleId              String?
+  githubId              String?
+  isVerified            Boolean           @default(false)
+  verificationToken     String?
+  resetPasswordToken    String?
+  resetPasswordExpires  DateTime?
+  ecoPoints             Int               @default(0)
+  badges                String[]          @default([])
+  sustainabilityRank    String            @default("Eco Beginner")
+  city                  String?
+  bio                   String?
+  totalCarbonFootprint  Float             @default(0)
+  carbonSaved           Float             @default(0)
+  treesPlanted          Int               @default(0)
+  environmentalScore    Float             @default(50)
+  streak                Int               @default(0)
+  lastActive            DateTime          @default(now())
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  
+  carbonRecords         CarbonRecord[]
+  goals                 Goal[]
+  treePlantations       TreePlantation[]
+  notifications         Notification[]
+  posts                 CommunityPost[]
+  chatHistories         ChatHistory[]
+}
+
+model CarbonRecord {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date           DateTime @default(now())
+  
+  transportation Json     // { car, bike, bus, train, metro, flight }
+  energy         Json     // { electricity, ac, appliances }
+  food           Json     // { vegetarian, vegan, mixed, meat }
+  waste          Json     // { plastic, organic, recyclable }
+  shopping       Json     // { clothing, electronics }
+  water          Json     // { daily }
+  
+  dailyCO2       Float
+  weeklyCO2      Float
+  monthlyCO2     Float
+  annualCO2      Float
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Challenge {
+  id              String           @id @default(uuid())
+  title           String
+  description     String
+  type            String           // 'no_plastic' | 'walk_to_work' | 'save_electricity' | 'plant_trees' | 'custom'
+  duration        Int
+  startDate       DateTime
+  endDate         DateTime
+  badge           String
+  ecoPointsReward Int              @default(100)
+  status          String           @default("upcoming") // 'upcoming' | 'active' | 'completed'
+  imageUrl        String?
+  difficulty      String           @default("medium") // 'easy' | 'medium' | 'hard'
+  category        String?
+  rules           String[]         @default([])
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  participants    String[]         @default([])
+  completedBy     String[]         @default([])
+}
+
+model Goal {
+  id                String    @id @default(uuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title             String
+  type              String    // 'carbon_reduction' | 'tree_planting' | 'electricity_reduction' | 'plastic_reduction' | 'custom'
+  description       String?
+  target            Float
+  current           Float     @default(0)
+  unit              String    @default("kg CO₂")
+  deadline          DateTime
+  status            String    @default("active") // 'active' | 'completed' | 'failed' | 'paused'
+  milestones        Json      @default("[]") // Array of { value, label, achieved, achievedAt }
+  reminder          Boolean   @default(false)
+  reminderFrequency String    @default("weekly") // 'daily' | 'weekly'
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model TreePlantation {
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  species            String
+  count              Int
+  location           String
+  imageUrl           String?
+  plantedAt          DateTime @default(now())
+  co2AbsorbedPerYear Float    @default(21)
+  totalCo2Absorbed   Float    @default(0)
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // 'goal_reminder' | 'challenge_update' | 'ai_suggestion' | 'achievement' | 'system'
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  link      String?
+  icon      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CommunityPost {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content     String
+  imageUrl    String?
+  tags        String[] @default([])
+  likes       String[] @default([]) // Array of User UUIDs who liked the post
+  comments    Json     @default("[]") // Array of { userId, content, createdAt }
+  type        String   @default("post") // 'post' | 'achievement' | 'challenge_completion'
+  challengeId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ChatHistory {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     Json     // Array of { role, content, createdAt }
+  sessionTitle String   @default("Eco Chat")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model LearningContent {
+  id              String   @id @default(uuid())
+  title           String
+  topic           String   // 'climate_change' | 'recycling' | 'renewable_energy' | 'sustainable_living'
+  type            String   // 'article' | 'video' | 'quiz' | 'infographic'
+  content         String
+  imageUrl        String?
+  videoUrl        String?
+  readTime        Int?
+  difficulty      String   @default("beginner") // 'beginner' | 'intermediate' | 'advanced'
+  quiz            Json?    // Array of { question, options, correctAnswer }
+  ecoPointsReward Int      @default(10)
+  published       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
