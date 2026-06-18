@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -5,7 +8,6 @@ import morgan from 'morgan';
 import compression from 'compression';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import { connectDB } from './config/database';
 import { errorHandler } from './middleware/errorHandler';
@@ -26,8 +28,6 @@ import communityRoutes from './routes/community';
 import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
 import profileRoutes from './routes/profile';
-
-dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
