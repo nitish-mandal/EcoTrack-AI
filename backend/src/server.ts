@@ -10,6 +10,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 import { connectDB } from './config/database';
+import passport from './config/passport';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 
@@ -54,6 +55,7 @@ app.use(compression());
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(passport.initialize());
 app.use('/api/', limiter);
 
 // Connect DB

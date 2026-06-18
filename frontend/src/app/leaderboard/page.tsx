@@ -99,13 +99,13 @@ export default function LeaderboardPage() {
 
         {/* ── Podium ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 20 }}>
-          {[top3[1], top3[0], top3[2]].map((u, displayIdx) => {
-            if (!u) return <div key={displayIdx} />;
+        {[top3[1], top3[0], top3[2]].map((u, displayIdx) => {
+            if (!u) return <div key={`podium-empty-${displayIdx}`} />;
             const rank = displayIdx === 0 ? 2 : displayIdx === 1 ? 1 : 3;
             const cfg = RANK_CONFIG[rank];
             const podiumHeights = [80, 112, 56];
             return (
-              <motion.div key={u._id} initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: displayIdx * 0.1 }}
+              <motion.div key={`podium-${u._id}`} initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: displayIdx * 0.1 }}
                 className="glass-card" style={{ borderRadius: 20, padding: '24px 16px', textAlign: 'center', border: rank === 1 ? '1.5px solid rgba(245,158,11,0.3)' : '1.5px solid var(--border)' }}>
                 <div style={{ position: 'relative', display: 'inline-block', marginBottom: 12 }}>
                   <div className="gradient-bg" style={{ width: rank === 1 ? 60 : 52, height: rank === 1 ? 60 : 52, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: rank === 1 ? '1.3rem' : '1.1rem', boxShadow: '0 4px 14px rgba(34,197,94,0.3)' }}>

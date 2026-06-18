@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -24,7 +24,7 @@ model User {
   resetPasswordToken    String?
   resetPasswordExpires  DateTime?
   ecoPoints             Int               @default(0)
-  badges                String[]          @default([])
+  badges                Json              @default("[]")
   sustainabilityRank    String            @default("Eco Beginner")
   city                  String?
   bio                   String?
@@ -80,12 +80,12 @@ model Challenge {
   imageUrl        String?
   difficulty      String           @default("medium") // 'easy' | 'medium' | 'hard'
   category        String?
-  rules           String[]         @default([])
+  rules           Json             @default("[]")
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  participants    String[]         @default([])
-  completedBy     String[]         @default([])
+  participants    Json             @default("[]")
+  completedBy     Json             @default("[]")
 }
 
 model Goal {
@@ -144,8 +144,8 @@ model CommunityPost {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   content     String
   imageUrl    String?
-  tags        String[] @default([])
-  likes       String[] @default([]) // Array of User UUIDs who liked the post
+  tags        Json     @default("[]")
+  likes       Json     @default("[]") // Array of User UUIDs who liked the post
   comments    Json     @default("[]") // Array of { userId, content, createdAt }
   type        String   @default("post") // 'post' | 'achievement' | 'challenge_completion'
   challengeId String?

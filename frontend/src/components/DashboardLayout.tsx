@@ -71,8 +71,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (isMobile) setSidebarOpen(false);
   }, [pathname, isMobile]);
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace('/login');
+    }
+  }, [isAuthenticated, router]);
+
   if (!isAuthenticated) {
-    router.replace('/login');
     return null;
   }
 
